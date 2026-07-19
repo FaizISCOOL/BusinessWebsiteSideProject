@@ -1,10 +1,6 @@
 import pathlib, importlib,sys,subprocess, sqlite3
-import types
-from typing import TypeAlias
-ImportModule : TypeAlias = types.ModuleType
-class ImportingListMismatch(Exception):
-    """Error raised when pip package name and runtime module name lists do not match in size."""
-    pass
+from Helper_Validation import *
+
 class DatabaseListMismatch(Exception):
     """Error raised when target key lists and data value lists mismatch in length."""
     pass
@@ -21,7 +17,7 @@ class InvalidParams(Exception):
     pass
 # Just to show it's a human writing the code, I live in my house with my parents, ok bye
 class Database:
-    def __init__(self,db_file : pathlib.Path | str) -> None:
+    def __init__(self,db_file : pathlib.Path | str ) -> None:
         self.conn = sqlite3.connect(db_file)
         self.cursor = self.conn.cursor()
         self.table_name = None
@@ -33,6 +29,8 @@ class Database:
     def table_initialization(self,table_name : str = 'registration') -> None:
         clean_table_name = "".join(char for char in table_name if char.isalnum() or char == '_')
         self.table_name = clean_table_name
+        if clean_table_name not in self.schemas and clean_table_name != 'email_verification':
+            self.schemas[clean_table_name] = self.schemas['registration']
         self.cursor.execute(f"""CREATE TABLE IF NOT EXISTS {clean_table_name} (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         username TEXT NOT NULL UNIQUE COLLATE NOCASE,
@@ -152,54 +150,29 @@ class Database:
             raise InvalidParams('Parameters DO NOT MATCH THE LIST IN FUNCTION (change_state)')
         if ID == 0:
             raise InvalidParams('The ID was NOT provided.')
-        self.cursor.execute(f"SELECT MAX(id) FROM {self.table_name}")
-        actual_max_id = self.cursor.fetchone()[0] or 0
-        if ID > actual_max_id:
-            raise InvalidParams('The ID provided is Greater then the entries in the Table')
+        self.cursor.execute(f"SELECT 1 FROM {self.table_name} WHERE id = ?", (ID,))
+        if not self.cursor.fetchone():
+            raise InvalidParams('The ID provided does not exist in the table.')
+
         self.Update(update_keys=['account_status'], update_values=[state_to_change_to], where_keys=['id'],
-                    where_values=[ID], table_name=self.table_name)
+                    where_values=[ID])
 class Register:
-    def __init__(self, db : Database | pathlib.Path, username: str, password: str, email: str, contact: int, country_code: str) -> None:
+    def __init__(self,helper : Helper, db : Database , username: str, password: str, email: str, contact: int, country_code: str) -> None:
         self.db = db
-        self.modules: dict[str, ImportModule] = self.library_initialization()
+        self.helper = helper
+        self.modules: dict[str, ImportModule] = self.helper.library_initialization()
         self.username: str = username
         self.email: str = email
         self.contact: int = contact
         self.country_code: str = country_code
         self.password_hash: str | None = None
         self.hash_password(password)
-    # Importing Libraries
-    @staticmethod
-    def Ensure_Library(module_name: str, pip_accepted_name: None | str = None) -> None:
-        pip_accepted_name = module_name if pip_accepted_name is None else pip_accepted_name
-        try:
-            importlib.import_module(module_name)
-        except ModuleNotFoundError:
-            try:
-                subprocess.run([sys.executable, "-m", "pip", "install", pip_accepted_name])
-                importlib.invalidate_caches()
-            except Exception:
-                sys.exit(1)
-    def library_initialization(self) -> dict:
-        libraries = ['argon2']
-        pip_accepted = ['argon2-cffi']
-        if len(libraries) != len(pip_accepted):
-            raise ImportingListMismatch('The Lists DO NOT MATCH')
-
-        modules_to_import : dict[str,ImportModule] = {}
-        for lib_name, pip_name in zip(libraries, pip_accepted):
-            self.Ensure_Library(module_name=lib_name, pip_accepted_name=pip_name)
-            modules_to_import[lib_name] = importlib.import_module(lib_name)
-        return modules_to_import
     def hash_password(self, password : str) -> None:
         passwordhasher = self.modules['argon2'].PasswordHasher
         ph = passwordhasher()
         self.password_hash = ph.hash(password)
-
     def check_existence(self, list_of_fields: list, list_of_values: list) -> bool:
         return True if len(self.db.find(list_of_keys=list_of_fields, list_of_values=list_of_values)) > 0 else False
-
-    @property
     def save_to_database(self) -> bool:
         if self.check_existence(list_of_fields=['username'], list_of_values=[self.username]):
             print(f"The username '{self.username}' is already taken.")
