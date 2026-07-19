@@ -37,7 +37,7 @@ class Database:
         email TEXT CHECK (email LIKE '%_@__%.%_'),
         password TEXT NOT NULL,
         country_code TEXT DEFAULT '+91' CHECK (length(country_code) <= 5),
-        contact_number INTEGER NOT NULL CHECK(length(cast(contact_number as TEXT)) BETWEEN 7 AND 15),
+        contact_number TEXT NOT NULL CHECK(length(contact_number) BETWEEN 7 AND 15),
         account_status TEXT DEFAULT 'PENDING_VERIFICATION' CHECK(account_status IN ('ACTIVE', 'SUSPENDED', 'PENDING_VERIFICATION')),
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         last_login TIMESTAMP DEFAULT CURRENT_TIMESTAMP);""")
@@ -157,13 +157,13 @@ class Database:
         self.Update(update_keys=['account_status'], update_values=[state_to_change_to], where_keys=['id'],
                     where_values=[ID])
 class Register:
-    def __init__(self,helper : Helper, db : Database , username: str, password: str, email: str, contact: int, country_code: str) -> None:
+    def __init__(self,helper : Helper, db : Database , username: str, password: str, email: str, contact: str, country_code: str) -> None:
         self.db = db
         self.helper = helper
         self.modules: dict[str, ImportModule] = self.helper.library_initialization()
         self.username: str = username
         self.email: str = email
-        self.contact: int = contact
+        self.contact: str = contact
         self.country_code: str = country_code
         self.password_hash: str | None = None
         self.hash_password(password)
@@ -192,3 +192,6 @@ class Register:
     def tired(self):
         pass
     # zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz
+    def tiredday2(self):
+        pass
+    # zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz even more zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz
