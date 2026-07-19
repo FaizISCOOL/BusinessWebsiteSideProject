@@ -17,6 +17,13 @@ class DatasetKeyMismatch(Exception):
 class EmptyList(Exception):
     """Error raised when operation requirements receive empty collections."""
     pass
+class EmptyParams(Exception):
+    """Error raised when operation requirements receive empty parameters."""
+class InvalidParams(Exception):
+    """Error raised when operation requirements receive invalid parameter / Values Which are invalid to the ones stored."""
+    pass
+
+# Just to show it's a human writing the code, I live in my house with my parents, ok bye
 
 class Database:
     def __init__(self,db_file : pathlib.Path | str) -> None:
@@ -24,8 +31,11 @@ class Database:
         self.cursor = self.conn.cursor()
         self.table_name = None
         self.Table_initialization()
-        self.list_table_keys = ['id', 'username', 'email', 'password', 'country_code', 'contact_number',
-                                'account_status', 'created_at', 'last_login']
+        self.schemas = {
+            'registration': ['id', 'username', 'email', 'password', 'country_code', 'contact_number', 'account_status',
+                             'created_at', 'last_login'],
+            'email_verification': ['id', 'email', 'code', 'timestamp']
+        }
     def Table_initialization(self,table_name : str = 'registration') -> None:
         clean_table_name = "".join(char for char in table_name if char.isalnum() or char == '_')
         self.table_name = clean_table_name
@@ -52,10 +62,12 @@ class Database:
             ON {clean_table_name} (username);
             """)
         self.conn.commit()
-    def key_match(self,key_values: list) -> None:
-        output = set(key_values).issubset(self.list_table_keys)
+    def key_match(self,key_values: list, target_table : str) -> None:
+        if target_table not in self.schemas:
+            raise DatasetKeyMismatch(f"Table '{target_table}' KEY_LIST IS NOT IN THE SCHEMAS.")
+        output = set(key_values).issubset(self.schemas[target_table])
         if not output:
-            raise DatasetKeyMismatch('The key values provided DOES NOT MATCH the table')
+            raise DatasetKeyMismatch(f'The key values provided DO NOT MATCH the schema for {target_table}')
     # To ensure The keys are accurate to the ones made when initializing the table
     def find(self,list_of_values : list = None, list_of_keys : list = None, return_all : bool = False) -> list:
         if list_of_values is None: list_of_values = []
@@ -119,6 +131,23 @@ class Database:
         values = update_values + where_values
         self.cursor.execute(final_query, values)
         self.conn.commit()
+
+    def change_state(self,state_to_change_to : str = None, ID : int = 0) -> None:
+        if state_to_change_to is None:
+            raise EmptyParams('The parameter state_to_change_to was not provided.')
+        if state_to_change_to not in ['ACTIVE', 'SUSPENDED', 'PENDING_VERIFICATION']:
+            raise InvalidParams('Parameters DO NOT MATCH THE LIST IN FUNCTION (change_state)')
+        if ID == 0:
+            raise InvalidParams('The ID was NOT provided.')
+        if ID > self.max_id:
+            raise InvalidParams('The ID provided is Greater then the entries in the Table')
+        self.cursor.execute(f"SELECT MAX(id) FROM {self.table_name}")
+        actual_max_id = self.cursor.fetchone()[0] or 0
+        if ID > actual_max_id:
+            raise InvalidParams('The ID provided is Greater then the entries in the Table')
+        self.Update(update_keys=['account_status'], update_values=[state_to_change_to], where_keys=['id'],
+                    where_values=[ID])
+
 
 class Register:
     def __init__(self, db : Database | pathlib.Path, username: str, password: str, email: str, contact: int, country_code: str) -> None:
