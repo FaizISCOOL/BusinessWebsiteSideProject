@@ -30,12 +30,12 @@ class Database:
         self.conn = sqlite3.connect(db_file)
         self.cursor = self.conn.cursor()
         self.table_name = None
-        self.Table_initialization()
         self.schemas = {
             'registration': ['id', 'username', 'email', 'password', 'country_code', 'contact_number', 'account_status',
                              'created_at', 'last_login'],
-            'email_verification': ['id', 'email', 'code', 'timestamp']
-        }
+            'email_verification': ['id', 'email', 'code', 'timestamp']}
+        self.Table_initialization()
+
     def Table_initialization(self,table_name : str = 'registration') -> None:
         clean_table_name = "".join(char for char in table_name if char.isalnum() or char == '_')
         self.table_name = clean_table_name
@@ -69,26 +69,30 @@ class Database:
         if not output:
             raise DatasetKeyMismatch(f'The key values provided DO NOT MATCH the schema for {target_table}')
     # To ensure The keys are accurate to the ones made when initializing the table
-    def find(self,list_of_values : list = None, list_of_keys : list = None, return_all : bool = False) -> list:
+    def find(self,list_of_values : list = None, list_of_keys : list = None, return_all : bool = False, table_name : str | None = None) -> list:
         if list_of_values is None: list_of_values = []
         if list_of_keys is None: list_of_keys = []
-        self.key_match(list_of_keys)
+        if table_name is None:
+            table_name = self.table_name
+        self.key_match(list_of_keys,table_name)
         if len(list_of_values) != len(list_of_keys):
             raise DatabaseListMismatch("List Length Mismatch")
         if not list_of_keys and return_all:
-            self.cursor.execute(f"SELECT * FROM {self.table_name}")
+            self.cursor.execute(f"SELECT * FROM {table_name}")
             return self.cursor.fetchall()
         elif not list_of_keys and not return_all:
             raise EmptyList("NO keys Provided / return_all is set to False")
         query = [f'{key} = ?' for key in list_of_keys]
         where_conditions  = ' AND '.join(query)
-        final_query = f'SELECT * FROM {self.table_name} WHERE {where_conditions}'
+        final_query = f'SELECT * FROM {table_name} WHERE {where_conditions}'
         self.cursor.execute(final_query, list_of_values)
         return self.cursor.fetchall()
-    def insert(self, list_of_values : list = None, list_of_keys : list = None) -> None:
+    def insert(self, list_of_values : list = None, list_of_keys : list = None, table_name : str | None = None) -> None:
         if list_of_values is None: list_of_values = []
         if list_of_keys is None: list_of_keys = []
-        self.key_match(list_of_keys)
+        if table_name is None:
+            table_name = self.table_name
+        self.key_match(list_of_keys,table_name)
         if len(list_of_values) != len(list_of_keys):
             raise DatabaseListMismatch("List Length Mismatch")
         if not list_of_keys:
@@ -96,29 +100,33 @@ class Database:
         columns = ', '.join(list_of_keys)
         placeholders = ['?' for _ in list_of_keys]
         placeholders = ', '.join(placeholders)
-        final_query = f"INSERT INTO {self.table_name} ({columns}) VALUES ({placeholders})"
+        final_query = f"INSERT INTO {table_name} ({columns}) VALUES ({placeholders})"
         self.cursor.execute(final_query, list_of_values)
         self.conn.commit()
-    def Delete(self, list_of_values : list = None, list_of_keys : list = None) -> None:
+    def Delete(self, list_of_values : list = None, list_of_keys : list = None, table_name : str | None = None) -> None:
         if list_of_values is None: list_of_values = []
         if list_of_keys is None: list_of_keys = []
-        self.key_match(list_of_keys)
+        if table_name is None:
+            table_name = self.table_name
+        self.key_match(list_of_keys,table_name)
         if len(list_of_values) != len(list_of_keys):
             raise DatabaseListMismatch("List Length Mismatch")
         if not list_of_keys:
             raise EmptyList("NO keys Provided")
         conditional_key = [f"{key} = ?" for key in list_of_keys]
         query = ' AND '.join(conditional_key)
-        final_query = f"DELETE FROM {self.table_name} WHERE {query}"
+        final_query = f"DELETE FROM {table_name} WHERE {query}"
         self.cursor.execute(final_query, list_of_values)
         self.conn.commit()
-    def Update(self, update_keys : list = None, update_values : list = None,where_keys : list = None, where_values : list = None) -> None:
+    def Update(self, update_keys : list = None, update_values : list = None,where_keys : list = None, where_values : list = None, table_name : str | None = None) -> None:
         if update_keys is None: update_keys = []
         if update_values is None: update_values = []
         if where_keys is None: where_keys = []
         if where_values is None: where_values = []
-        self.key_match(update_keys)
-        self.key_match(where_keys)
+        if table_name is None:
+            table_name = self.table_name
+        self.key_match(update_keys,table_name)
+        self.key_match(where_keys, table_name)
         if (len(update_keys) != len(update_values)) or (len(where_keys) != len(where_values)):
             raise DatabaseListMismatch("List Length Mismatch")
         if not update_keys or not where_keys:
@@ -127,7 +135,7 @@ class Database:
         set_query = ', '.join(set_update_keys)
         where_condition_key = [f'{key2} = ?' for key2 in where_keys]
         where_query = ' AND '.join(where_condition_key)
-        final_query = f"UPDATE {self.table_name} SET {set_query} WHERE {where_query}"
+        final_query = f"UPDATE {table_name} SET {set_query} WHERE {where_query}"
         values = update_values + where_values
         self.cursor.execute(final_query, values)
         self.conn.commit()
@@ -139,14 +147,12 @@ class Database:
             raise InvalidParams('Parameters DO NOT MATCH THE LIST IN FUNCTION (change_state)')
         if ID == 0:
             raise InvalidParams('The ID was NOT provided.')
-        if ID > self.max_id:
-            raise InvalidParams('The ID provided is Greater then the entries in the Table')
         self.cursor.execute(f"SELECT MAX(id) FROM {self.table_name}")
         actual_max_id = self.cursor.fetchone()[0] or 0
         if ID > actual_max_id:
             raise InvalidParams('The ID provided is Greater then the entries in the Table')
         self.Update(update_keys=['account_status'], update_values=[state_to_change_to], where_keys=['id'],
-                    where_values=[ID])
+                    where_values=[ID], table_name=self.table_name)
 
 
 class Register:
@@ -186,8 +192,10 @@ class Register:
         passwordhasher = self.modules['argon2'].PasswordHasher
         ph = passwordhasher()
         self.password_hash = ph.hash(password)
-    def check_existence(self,list_of_fields : list, list_of_values: list) -> bool:
-        return True if len(self.db.find(list_of_values,list_of_fields)) > 0 else False
+
+    def check_existence(self, list_of_fields: list, list_of_values: list) -> bool:
+        return True if len(self.db.find(list_of_keys=list_of_fields, list_of_values=list_of_values)) > 0 else False
+
     @property
     def save_to_database(self) -> bool:
         if self.check_existence(list_of_fields=['username'], list_of_values=[self.username]):
