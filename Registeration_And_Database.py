@@ -1,10 +1,7 @@
-import shutil, pathlib, os, importlib,sys,subprocess, sqlite3
+import pathlib, importlib,sys,subprocess, sqlite3
 import types
 from typing import TypeAlias
-from time import sleep
-
 ImportModule : TypeAlias = types.ModuleType
-
 class ImportingListMismatch(Exception):
     """Error raised when pip package name and runtime module name lists do not match in size."""
     pass
@@ -22,9 +19,7 @@ class EmptyParams(Exception):
 class InvalidParams(Exception):
     """Error raised when operation requirements receive invalid parameter / Values Which are invalid to the ones stored."""
     pass
-
 # Just to show it's a human writing the code, I live in my house with my parents, ok bye
-
 class Database:
     def __init__(self,db_file : pathlib.Path | str) -> None:
         self.conn = sqlite3.connect(db_file)
@@ -34,9 +29,8 @@ class Database:
             'registration': ['id', 'username', 'email', 'password', 'country_code', 'contact_number', 'account_status',
                              'created_at', 'last_login'],
             'email_verification': ['id', 'email', 'code', 'timestamp']}
-        self.Table_initialization()
-
-    def Table_initialization(self,table_name : str = 'registration') -> None:
+        self.table_initialization()
+    def table_initialization(self,table_name : str = 'registration') -> None:
         clean_table_name = "".join(char for char in table_name if char.isalnum() or char == '_')
         self.table_name = clean_table_name
         self.cursor.execute(f"""CREATE TABLE IF NOT EXISTS {clean_table_name} (
@@ -139,7 +133,18 @@ class Database:
         values = update_values + where_values
         self.cursor.execute(final_query, values)
         self.conn.commit()
-
+    # Remember Folks, ONLY USERNAME AND EMAIL ALLOWED since they are special for each account registered
+    def extract_id_main(self, method : str | None = None, value : str | None = None) -> int:
+        if method is None:
+            raise InvalidParams("Method is None")
+        if method not in ['username','email']:
+            raise InvalidParams("Method is invalid, Must only be 'username' or 'email'")
+        if value is None:
+            raise InvalidParams("Value is None, Only 1 ID can be sent back")
+        result = self.find(list_of_keys=[method], list_of_values=[value])
+        if not result:
+            raise InvalidParams("The method/Value's are NOT registered IN THE LIST")
+        return result[0][0]
     def change_state(self,state_to_change_to : str = None, ID : int = 0) -> None:
         if state_to_change_to is None:
             raise EmptyParams('The parameter state_to_change_to was not provided.')
@@ -153,8 +158,6 @@ class Database:
             raise InvalidParams('The ID provided is Greater then the entries in the Table')
         self.Update(update_keys=['account_status'], update_values=[state_to_change_to], where_keys=['id'],
                     where_values=[ID], table_name=self.table_name)
-
-
 class Register:
     def __init__(self, db : Database | pathlib.Path, username: str, password: str, email: str, contact: int, country_code: str) -> None:
         self.db = db
