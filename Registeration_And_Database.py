@@ -61,7 +61,8 @@ class Database:
         if not output:
             raise DatasetKeyMismatch(f'The key values provided DO NOT MATCH the schema for {target_table}')
     # To ensure The keys are accurate to the ones made when initializing the table
-    def find(self,list_of_values : list = None, list_of_keys : list = None, return_all : bool = False, table_name : str | None = None) -> list:
+    def find(self, list_of_values: list = None, list_of_keys: list = None, return_all: bool = False,
+             table_name: str | None = None) -> list:
         if list_of_values is None: list_of_values = []
         if list_of_keys is None: list_of_keys = []
         if table_name is None:
@@ -132,14 +133,14 @@ class Database:
         self.cursor.execute(final_query, values)
         self.conn.commit()
     # Remember Folks, ONLY USERNAME AND EMAIL ALLOWED since they are special for each account registered
-    def extract_id_main(self, method : str | None = None, value : str | None = None) -> int:
+    def extract_id_main(self, method : str | None = None, value : str | None = None, table_name : str | None =None) -> int:
         if method is None:
             raise InvalidParams("Method is None")
         if method not in ['username','email']:
             raise InvalidParams("Method is invalid, Must only be 'username' or 'email'")
         if value is None:
             raise InvalidParams("Value is None, Only 1 ID can be sent back")
-        result = self.find(list_of_keys=[method], list_of_values=[value])
+        result = self.find(list_of_keys=[method], list_of_values=[value], table_name=table_name)
         if not result:
             raise InvalidParams("The method/Value's are NOT registered IN THE LIST")
         return result[0][0]
@@ -156,6 +157,11 @@ class Database:
 
         self.Update(update_keys=['account_status'], update_values=[state_to_change_to], where_keys=['id'],
                     where_values=[ID])
+    # PERSONAL EDITED FOR ONLY THE EMAIL TABLE
+    def check_if_correct_code(self,code_provided : str | int,email_user : str) -> bool:
+        request_id = self.extract_id_main('email',value=email_user,table_name='email_verification')
+        return True if len(self.find(list_of_keys=['id'],list_of_values=[request_id],table_name='email_verification')) != 0 else False
+
 class Register:
     def __init__(self,helper : Helper, db : Database , username: str, password: str, email: str, contact: str, country_code: str) -> None:
         self.db = db
