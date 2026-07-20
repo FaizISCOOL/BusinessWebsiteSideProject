@@ -1,6 +1,6 @@
-import pathlib, importlib,sys,subprocess, sqlite3
+import pathlib, sqlite3
 from Helper_Validation import *
-
+from datetime import datetime
 class DatabaseListMismatch(Exception):
     """Error raised when target key lists and data value lists mismatch in length."""
     pass
@@ -26,6 +26,7 @@ class Database:
                              'created_at', 'last_login'],
             'email_verification': ['id', 'email', 'code', 'timestamp']}
         self.table_initialization()
+        self.unused_code_deletion()
     def table_initialization(self,table_name : str = 'registration') -> None:
         clean_table_name = "".join(char for char in table_name if char.isalnum() or char == '_')
         self.table_name = clean_table_name
@@ -151,16 +152,36 @@ class Database:
             raise InvalidParams('Parameters DO NOT MATCH THE LIST IN FUNCTION (change_state)')
         if ID == 0:
             raise InvalidParams('The ID was NOT provided.')
-        self.cursor.execute(f"SELECT 1 FROM {self.table_name} WHERE id = ?", (ID,))
+        self.cursor.execute(f"SELECT 1 FROM registration WHERE id = ?", (ID,))
         if not self.cursor.fetchone():
             raise InvalidParams('The ID provided does not exist in the table.')
 
         self.Update(update_keys=['account_status'], update_values=[state_to_change_to], where_keys=['id'],
-                    where_values=[ID])
+                    where_values=[ID],table_name='registration')
+    def check_for_death_time(self,death_time : str) -> bool:
+        norm_time = datetime.strptime(death_time, '%Y-%m-%d %H:%M:%S')
+        return norm_time < datetime.now()
     # PERSONAL EDITED FOR ONLY THE EMAIL TABLE
-    def check_if_correct_code(self,code_provided : str | int,email_user : str) -> bool:
-        request_id = self.extract_id_main('email',value=email_user,table_name='email_verification')
-        return True if len(self.find(list_of_keys=['id'],list_of_values=[request_id],table_name='email_verification')) != 0 else False
+    def check_if_correct_code(self,code_provided : str | int,email_user : str) -> tuple[bool,str]:
+        packet = self.find(list_of_keys=['email'],list_of_values=[email_user],table_name='email_verification')
+        if not packet:
+            return False, 'Incorrect email'
+        packet_better = packet[0]
+        code_stored = packet_better[2]
+        if self.check_for_death_time(packet_better[3]):
+            return False, 'Code Expired'
+        if str(code_stored) != str(code_provided):
+            return False, 'Code IS INVALID'
+        else:
+            return True, 'Code IS AUTHENTICATED'
+
+    def unused_code_deletion(self) -> None:
+        current_time_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        self.cursor.execute(
+            "DELETE FROM email_verification WHERE timestamp < ?",
+            (current_time_str,)
+        )
+        self.conn.commit()
 
 class Register:
     def __init__(self,helper : Helper, db : Database , username: str, password: str, email: str, contact: str, country_code: str) -> None:
@@ -201,3 +222,6 @@ class Register:
     def tiredday2(self):
         pass
     # zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz even more zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz
+    def tiredday3(self):
+        pass
+    # zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz zzzzzzzzzzzzzzzzzzz

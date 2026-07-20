@@ -48,10 +48,11 @@ class Helper:
         code = str(100000 + secrets.randbelow(900000))
         expiry_time = (datetime.now() + timedelta(minutes=5)).strftime('%Y-%m-%d %H:%M:%S')
         return code, expiry_time
-    # REMEMBER WHENEVER YOU SEND ANY sender_password here, PLEASE MAKE SURE its NOT your actual password
-    # You need to get a special password, Known as the APP password from google
-    # also pull it out from either environ.get or something else so YOUR APP PASS DOSENT GET STOLEN
-    def email_send(self,sender_email : str, recipient_email : str, subject : str, message : str, sender_password : str ) -> bool:
+    # REMEMBER WHENEVER YOU SEND ANY sender_password here, PLEASE MAKE SURE it's NOT your actual password
+    # You need to get a special password, Known as the APP password from GOOGLE
+    # also pull it out from either environ.get or something else so YOUR APP PASS DOESN'T GET STOLEN
+    @staticmethod
+    def email_send(sender_email : str, recipient_email : str, subject : str, message : str, sender_password : str ) -> bool:
         email = EmailMessage()
         email['Subject'] = subject
         email['From'] = sender_email
