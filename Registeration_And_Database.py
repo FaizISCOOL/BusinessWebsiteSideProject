@@ -21,6 +21,7 @@ class Database:
         self.conn = sqlite3.connect(db_file)
         self.cursor = self.conn.cursor()
         self.table_name = None
+        self.hp = Helper()
         self.schemas = {
             'registration': ['id', 'username', 'email', 'password', 'country_code', 'contact_number', 'account_status',
                              'created_at', 'last_login'],
@@ -174,7 +175,6 @@ class Database:
             return False, 'Code IS INVALID'
         else:
             return True, 'Code IS AUTHENTICATED'
-
     def unused_code_deletion(self) -> None:
         current_time_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         self.cursor.execute(
@@ -194,6 +194,7 @@ class Register:
         self.country_code: str = country_code
         self.password_hash: str | None = None
         self.hash_password(password)
+        self.email_subject = 'Action Required: Verify Your Account'
     def hash_password(self, password : str) -> None:
         passwordhasher = self.modules['argon2'].PasswordHasher
         ph = passwordhasher()
@@ -216,6 +217,34 @@ class Register:
         except sqlite3.Error as e:
             print(f" Database error encountered during save: {e}")
             return False
+    def small_little_message_creator(self,verification_code : str) -> str:
+        message = \
+f"""
+<div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px;">
+  <h2 style="color: #333333; margin-top: 0;">Verify Your Account</h2>
+  <p style="color: #555555; font-size: 15px;">Use the code below to complete your registration. It is valid for <strong>5 minutes</strong>.</p>
+  <div style="background-color: #f4f4f6; padding: 16px; text-align: center; font-size: 28px; font-weight: bold; letter-spacing: 4px; color: #111111; border-radius: 6px; margin: 20px 0;">
+    {verification_code}
+  </div>
+  <p style="color: #888888; font-size: 12px; margin-bottom: 0;">If you didn't request this email, no further action is required.</p>
+</div>
+"""
+        return message
+    def send_email(self,sender_email,app_pass):
+        receiver_email : str = self.email
+        verification_code, timestamp  = self.helper.generate_verification_code()
+        subject : str = self.email_subject
+        message : str = self.small_little_message_creator(verification_code)
+        self.db.insert(list_of_keys=['email','code','timestamp'], list_of_values=[receiver_email, verification_code, timestamp], table_name='email_verification')
+        self.helper.email_send(sender_email=sender_email,sender_password=app_pass,recipient_email=receiver_email,subject=subject,message=message)
+
+    def resend(self,sender_email : str, app_pass : str):
+        email : str = self.email
+        subject : str = self.email_subject
+        new_code, timestamp  = self.helper.generate_verification_code()
+        message : str = self.small_little_message_creator(new_code)
+        self.db.Update(where_keys=['email'],where_values=[email],table_name='email_verification',update_keys=['code','timestamp'],update_values=[new_code,timestamp])
+        self.helper.email_send(sender_email=sender_email,sender_password=app_pass,recipient_email=email,subject=subject,message=message)
     def tired(self):
         pass
     # zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz
