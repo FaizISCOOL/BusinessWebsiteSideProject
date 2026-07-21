@@ -182,7 +182,6 @@ class Database:
             (current_time_str,)
         )
         self.conn.commit()
-
 class Register:
     def __init__(self,helper : Helper, db : Database , username: str, password: str, email: str, contact: str, country_code: str) -> None:
         self.db = db
@@ -237,7 +236,6 @@ f"""
         message : str = self.small_little_message_creator(verification_code)
         self.db.insert(list_of_keys=['email','code','timestamp'], list_of_values=[receiver_email, verification_code, timestamp], table_name='email_verification')
         self.helper.email_send(sender_email=sender_email,sender_password=app_pass,recipient_email=receiver_email,subject=subject,message=message)
-
     def resend(self,sender_email : str, app_pass : str):
         email : str = self.email
         subject : str = self.email_subject
