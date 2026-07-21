@@ -234,6 +234,7 @@ f"""
         verification_code, timestamp  = self.helper.generate_verification_code()
         subject : str = self.email_subject
         message : str = self.small_little_message_creator(verification_code)
+        self.db.Delete(list_of_keys=['email'], list_of_values=[receiver_email],table_name='email_verification')
         self.db.insert(list_of_keys=['email','code','timestamp'], list_of_values=[receiver_email, verification_code, timestamp], table_name='email_verification')
         self.helper.email_send(sender_email=sender_email,sender_password=app_pass,recipient_email=receiver_email,subject=subject,message=message)
     def resend(self,sender_email : str, app_pass : str):
@@ -243,6 +244,14 @@ f"""
         message : str = self.small_little_message_creator(new_code)
         self.db.Update(where_keys=['email'],where_values=[email],table_name='email_verification',update_keys=['code','timestamp'],update_values=[new_code,timestamp])
         self.helper.email_send(sender_email=sender_email,sender_password=app_pass,recipient_email=email,subject=subject,message=message)
+    def verify_account(self,code_submitted : str, email : str) -> tuple[bool, str]:
+        is_valid, msg = self.db.check_if_correct_code(code_provided=code_submitted,email_user=email)
+        if not is_valid:
+            return False, msg
+        id = self.db.extract_id_main(method='email',value=email,table_name='registration')
+        self.db.change_state(state_to_change_to='ACTIVE',ID=id)
+        self.db.Delete(list_of_keys=['email'], list_of_values=[email], table_name='email_verification')
+        return True, msg
     def tired(self):
         pass
     # zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz
@@ -252,3 +261,6 @@ f"""
     def tiredday3(self):
         pass
     # zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz zzzzzzzzzzzzzzzzzzz
+    def tiredday4(self):
+        pass
+    # zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz
