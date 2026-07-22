@@ -26,7 +26,7 @@ class Database:
             'registration': ['id', 'username', 'email', 'password', 'country_code', 'contact_number', 'account_status',
                              'created_at', 'last_login'],
             'email_verification': ['id', 'email', 'code', 'timestamp'],
-            'temp_login_block':['id','username','attempts','lockout','attempts_expire']}
+            'temp_login_block':['id','username','attempts','lockout','attempts_expire','email']}
         self.table_initialization()
         self.unused_code_deletion()
     def table_initialization(self,table_name : str = 'registration') -> None:
@@ -57,7 +57,8 @@ class Database:
         username TEXT NOT NULL UNIQUE COLLATE NOCASE,
         attempts INTEGER NOT NULL DEFAULT 0,
         lockout TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        attempts_expire TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP)""")
+        attempts_expire TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        email TEXT CHECK (email LIKE '%_@__%.%_'))""")
 
         self.cursor.execute(f"""
             CREATE INDEX IF NOT EXISTS idx_{clean_table_name}_username 
