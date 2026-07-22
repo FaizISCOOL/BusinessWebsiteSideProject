@@ -17,7 +17,7 @@ class InvalidParams(Exception):
     pass
 # Just to show it's a human writing the code, I live in my house with my parents, ok bye
 class Database:
-    def __init__(self,db_file : pathlib.Path | str ) -> None:
+    def __init__(self,db_file : pathlib.Path | str = 'registration_and_login_database.db' ) -> None:
         self.conn = sqlite3.connect(db_file)
         self.cursor = self.conn.cursor()
         self.table_name = None
@@ -25,7 +25,8 @@ class Database:
         self.schemas = {
             'registration': ['id', 'username', 'email', 'password', 'country_code', 'contact_number', 'account_status',
                              'created_at', 'last_login'],
-            'email_verification': ['id', 'email', 'code', 'timestamp']}
+            'email_verification': ['id', 'email', 'code', 'timestamp'],
+            'temp_login_block':['id','username','attempts','lockout','attempts_expire']}
         self.table_initialization()
         self.unused_code_deletion()
     def table_initialization(self,table_name : str = 'registration') -> None:
@@ -50,6 +51,13 @@ class Database:
         code TEXT NOT NULL CHECK (length(code) >= 6),
         timestamp DATETIME NOT NULL
         );""")
+
+        self.cursor.execute(f"""CREATE TABLE IF NOT EXISTS temp_login_block (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT NOT NULL UNIQUE COLLATE NOCASE,
+        attempts INTEGER NOT NULL DEFAULT 0,
+        lockout TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        attempts_expire TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP)""")
 
         self.cursor.execute(f"""
             CREATE INDEX IF NOT EXISTS idx_{clean_table_name}_username 
@@ -252,6 +260,8 @@ f"""
         self.db.change_state(state_to_change_to='ACTIVE',ID=id)
         self.db.Delete(list_of_keys=['email'], list_of_values=[email], table_name='email_verification')
         return True, msg
+    def creation(self, username : str ,email : str ,hash_password : str ,country_code: str ,contact : str):
+        self.db.insert(list_of_keys=['username','password','email','country_code','contact_number'],list_of_values=[username,hash_password,email,country_code,contact],table_name='registration')
     def tired(self):
         pass
     # zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz
