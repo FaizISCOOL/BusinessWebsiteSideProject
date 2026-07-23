@@ -1,4 +1,4 @@
-from Registeration_And_Database import Database
+from Registeration_And_Database import Database, Register
 from Helper_Validation import Helper, Validator
 from datetime import datetime, timedelta
 
@@ -12,26 +12,28 @@ class LOGIN:
     validator: Validator
     helper: Helper
     db: Database
+
     def __init__(self):
         self.helper = Helper()
         self.db = Database()
         self.validator = Validator()
         self.module = self.helper.library_initialization()
-        self.Threshold = [(20, 5),(50, 10),(100, 20),(200, 30),(500, 40),(1000, 50),(2000, 60),(5000, 70)]
+        self.Threshold = [(20, 5), (50, 10), (100, 20), (200, 30), (500, 40), (1000, 50), (2000, 60), (5000, 70)]
 
     # returns 2 booleans, 1st boolean is used to identify if email is still required, (state == Pending)
     # 2nd boolean is used to identify whether it is active or a banned account
     # For 1st Boolean Pending means bool would be True else False
     # 2nd Bool True Would mean active else would mean banned
-    def check_if_email_or_user(self,suspect : str) -> str:
+    def check_if_email_or_user(self, suspect: str) -> str:
         is_email, _ = self.validator.valid_email(suspect)
         search_key = ''
         if is_email:
             search_key = 'email'
         else:
-            is_user,_ = self.validator.valid_user(suspect)
+            is_user, _ = self.validator.valid_user(suspect)
             if not is_user:
-                raise BadDesignError('CHECK YOUR VARIABLES IN MAIN FUNCTION BEFORE PASSING THEM IN A HELPER FUNCTION YOU STUPID')
+                raise BadDesignError(
+                    'CHECK YOUR VARIABLES IN MAIN FUNCTION BEFORE PASSING THEM IN A HELPER FUNCTION YOU STUPID')
             search_key = 'username'
         return search_key
 
@@ -54,7 +56,8 @@ class LOGIN:
     # Lockout = True, Not locked Out = False
     def check_locked_state(self, username_or_email: str) -> tuple[bool, bool | str]:
         search_key = self.check_if_email_or_user(username_or_email)
-        found = self.db.find(list_of_keys=[search_key], list_of_values=[username_or_email], table_name='temp_login_block')
+        found = self.db.find(list_of_keys=[search_key], list_of_values=[username_or_email],
+                             table_name='temp_login_block')
         if len(found) == 0:
             return False, False
         output = found[0]
@@ -63,26 +66,31 @@ class LOGIN:
         if cleansed_lockout_temp > datetime.now():
             return True, 'YOU ARE LOCKED OUT FOR REPEATED LOGIN ATTEMPTS'
         return False, False
+
     # ON GOD BRO, MAKE SURE YOU AT LEAST CHECK FOR IF A USER IS REGISTERED OR NOT GOD FORBID
-    def penalty_row_creator(self,username_or_email):
-        rotator = ['username','email']
+    def penalty_row_creator(self, username_or_email):
+        rotator = ['username', 'email']
         search_key = self.check_if_email_or_user(username_or_email)
         inverse = rotator[rotator.index(search_key) - 1]
-        index_in_main_db = {'username':1, 'email':2}
+        index_in_main_db = {'username': 1, 'email': 2}
         output = self.db.find(list_of_keys=[search_key], list_of_values=[username_or_email], table_name='registration')
         the_other = output[0][index_in_main_db[inverse]]
-        self.db.insert(list_of_keys=[search_key,inverse], list_of_values=[username_or_email,the_other], table_name='temp_login_block',)
+        self.db.insert(list_of_keys=[search_key, inverse], list_of_values=[username_or_email, the_other],
+                       table_name='temp_login_block', )
+
     # Custom Thresholds I thought of, I have no clue on how actual websites scale their lockdown length
     # IF 20+ attempts apply threshold
     # ((x-20) * 1.5) + 1 seconds = lockdown time from datetime.now()
     # For attempts expiry, attempts = x, 50<x>20 = 10 minute expiry, 100<x>50 = 20 minutes, 200<x>100 , 30 minutes, 500<x>200 , 40 min and so on (ill set a threshold table)
 
-    def calculate_update_penalties(self,username_or_email : str) -> None:
+    def calculate_update_penalties(self, username_or_email: str) -> None:
         search_key = self.check_if_email_or_user(username_or_email)
-        output = self.db.find(table_name='temp_login_block',list_of_keys=[search_key], list_of_values=[username_or_email])
+        output = self.db.find(table_name='temp_login_block', list_of_keys=[search_key],
+                              list_of_values=[username_or_email])
         if len(output) == 0:
             self.penalty_row_creator(username_or_email)
-            output = self.db.find(table_name='temp_login_block',list_of_keys=[search_key], list_of_values=[username_or_email])
+            output = self.db.find(table_name='temp_login_block', list_of_keys=[search_key],
+                                  list_of_values=[username_or_email])
         attempts = output[0][2]
         now = datetime.now()
         attempts_expire_raw = output[0][4]
@@ -97,11 +105,55 @@ class LOGIN:
         else:
             final_lockdown_penalty = now
         attempt_expiry = 70
-        for higher_bound,expiry in self.Threshold:
+        for higher_bound, expiry in self.Threshold:
             if new_attempt <= higher_bound:
                 attempt_expiry = expiry
                 break
         final_attempts_expire = now + timedelta(minutes=attempt_expiry)
         lockout_format = final_lockdown_penalty.strftime('%Y-%m-%d %H:%M:%S')
         expire_format = final_attempts_expire.strftime('%Y-%m-%d %H:%M:%S')
-        self.db.Update(update_keys=['attempts','lockout','attempts_expire'],update_values=[new_attempt,lockout_format,expire_format],where_keys=[search_key],where_values=[username_or_email],table_name='temp_login_block')
+        self.db.update(update_keys=['attempts', 'lockout', 'attempts_expire'],
+                       update_values=[new_attempt, lockout_format, expire_format], where_keys=[search_key],
+                       where_values=[username_or_email], table_name='temp_login_block')
+
+    # MAKE SURE YOU CHECK FOR EXISTENCE
+    def delete_peaceful_ppl(self, username_or_email: str) -> None:
+        search_key = self.check_if_email_or_user(username_or_email)
+        output = self.db.find(table_name='registration', list_of_keys=[search_key], list_of_values=[username_or_email])
+        some_other_output = self.db.find(table_name='temp_login_block', list_of_keys=[search_key],
+                                         list_of_values=[username_or_email])
+        if len(output) == 0:
+            raise BadDesignError('Like, JUST CHECK IN THE MAIN FUNCTION GOD DAMN IT')
+        if len(some_other_output) > 0:
+            self.db.delete(list_of_keys=[search_key], table_name='temp_login_block', list_of_values=[username_or_email])
+
+    def update_login_time(self, username_or_email: str) -> None:
+        search_key = self.check_if_email_or_user(username_or_email)
+        output = self.db.find(table_name='registration', list_of_keys=[search_key],
+                              list_of_values=[username_or_email])
+        if len(output) == 0:
+            raise BadDesignError('Its as simple as writing A LINE OF CODE TO CHECK IF THE ROW EXISTS OR NOT')
+        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        self.db.update(update_keys=['last_login'], update_values=[now], where_keys=[search_key],
+                       where_values=[username_or_email], table_name='registration')
+
+    # DON'T STORE THE PASSWORD IN ANYTHING DIRECTLY PASS IT AND HASH IT
+    def login(self, username_or_email: str, password_received: str) -> tuple[bool, bool | str]:
+        search_key = self.check_if_email_or_user(username_or_email)
+        value = username_or_email
+        ph = self.module['argon2'].PasswordHasher()
+        output = self.db.find(table_name='registration', list_of_keys=[search_key], list_of_values=[value])
+        if len(output) == 0:
+            return False, 'Incorrect Password or Username/Email'
+        value_bool, msg = self.check_locked_state(username_or_email)
+        if value_bool:
+            return False, msg
+        stored_hash = output[0][3]
+        try:
+            ph.verify(stored_hash, password_received)
+        except Exception:
+            self.calculate_update_penalties(username_or_email)
+            return False, "Incorrect Password or Username/Email"
+        self.delete_peaceful_ppl(username_or_email)
+        self.update_login_time(username_or_email)
+        return True, 'Success'
