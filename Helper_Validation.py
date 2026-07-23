@@ -36,7 +36,7 @@ class Helper:
     _cache: dict = {}
 
     def __init__(self):
-        pass
+        self.module = self.library_initialization()
 
     @staticmethod
     def Ensure_Library(module_name: str, pip_accepted_name: None | str = None) -> None:
@@ -70,6 +70,12 @@ class Helper:
         expiry_time: str = (datetime.now() + timedelta(minutes=5)).strftime('%Y-%m-%d %H:%M:%S')
         return code, expiry_time
 
+
+    def hash_password(self, password: str) -> str:
+        passwordhasher = self.module['argon2'].PasswordHasher
+        ph = passwordhasher()
+        return ph.hash(password)
+
     # REMEMBER WHENEVER YOU SEND ANY sender_password here, PLEASE MAKE SURE it's NOT your actual password
     # You need to get a special password, Known as the APP password from GOOGLE
     # also pull it out from either environ.get or something else so YOUR APP PASS DOESN'T GET STOLEN
@@ -94,7 +100,7 @@ class Helper:
 
 class Validator:
     USER_RE = re.compile(r"^[a-zA-Z0-9_-]{3,20}$")
-    EMAIL_RE = re.compile(r'^[a-zA-Z0-9._%+-]+@[\w.-]+\.[a-zA-Z]{2,}$')
+    EMAIL_RE = re.compile(r'^[a-zA-Z0-9._%+\-]{1,64}@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,63}$')
     COUNTRY_CODE_SET: set[str] = {
         "+1", "+7", "+20", "+27", "+30", "+31", "+32", "+33", "+34", "+36", "+39", "+40",
         "+41", "+43", "+44", "+45", "+46", "+47", "+48", "+49", "+51", "+52", "+53", "+54",

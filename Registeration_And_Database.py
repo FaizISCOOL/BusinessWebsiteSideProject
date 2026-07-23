@@ -123,6 +123,7 @@ class Database:
         final_query = f"INSERT INTO {table_name} ({columns}) VALUES ({placeholders})"
         self.cursor.execute(final_query, list_of_values)
         self.conn.commit()
+
     def delete(self, list_of_values: list = None, list_of_keys: list = None, table_name: str | None = None) -> None:
         if list_of_values is None: list_of_values = []
         if list_of_keys is None: list_of_keys = []
@@ -227,14 +228,8 @@ class Register:
         self.email: str = email
         self.contact: str = contact
         self.country_code: str = country_code
-        self.password_hash: str | None = None
-        self.hash_password(password)
+        self.password_hash: str = self.helper.hash_password(password)
         self.email_subject = 'Action Required: Verify Your Account'
-
-    def hash_password(self, password: str) -> None:
-        passwordhasher = self.modules['argon2'].PasswordHasher
-        ph = passwordhasher()
-        self.password_hash = ph.hash(password)
 
     def check_existence(self, list_of_fields: list, list_of_values: list) -> bool:
         return True if len(self.db.find(list_of_keys=list_of_fields, list_of_values=list_of_values)) > 0 else False
@@ -270,7 +265,7 @@ class Register:
 """
         return message
 
-    def send_email(self, sender_email, app_pass):
+    def send_email(self, sender_email, app_pass) -> tuple[bool, str]:
         receiver_email: str = self.email
         verification_code, timestamp = self.helper.generate_verification_code()
         subject: str = self.email_subject
@@ -278,18 +273,27 @@ class Register:
         self.db.delete(list_of_keys=['email'], list_of_values=[receiver_email], table_name='email_verification')
         self.db.insert(list_of_keys=['email', 'code', 'timestamp'],
                        list_of_values=[receiver_email, verification_code, timestamp], table_name='email_verification')
-        self.helper.email_send(sender_email=sender_email, sender_password=app_pass, recipient_email=receiver_email,
-                               subject=subject, message=message)
+        hello = self.helper.email_send(sender_email=sender_email, sender_password=app_pass,
+                                       recipient_email=receiver_email,
+                                       subject=subject, message=message)
 
-    def resend(self, sender_email: str, app_pass: str):
+        # Just remembered people can type shit and crash the entire email system
+        if not hello:
+            return False, 'INVALID EMAIL'
+        return True, ''
+
+    def resend(self, sender_email: str, app_pass: str) -> tuple[bool, str]:
         email: str = self.email
         subject: str = self.email_subject
         new_code, timestamp = self.helper.generate_verification_code()
         message: str = self.small_little_message_creator(new_code)
         self.db.update(where_keys=['email'], where_values=[email], table_name='email_verification',
                        update_keys=['code', 'timestamp'], update_values=[new_code, timestamp])
-        self.helper.email_send(sender_email=sender_email, sender_password=app_pass, recipient_email=email,
-                               subject=subject, message=message)
+        hello = self.helper.email_send(sender_email=sender_email, sender_password=app_pass, recipient_email=email,
+                                       subject=subject, message=message)
+        if not hello:
+            return False, 'INVALID EMAIL'
+        return True, ''
 
     def verify_account(self, code_submitted: str, email: str) -> tuple[bool, str]:
         is_valid, msg = self.db.check_if_correct_code(code_provided=code_submitted, email_user=email)
@@ -319,6 +323,7 @@ class Register:
     # zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz zzzzzzzzzzzzzzzzzzz
     def tiredday4(self):
         pass
+
     # zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz
 
     def tiredday5(self):

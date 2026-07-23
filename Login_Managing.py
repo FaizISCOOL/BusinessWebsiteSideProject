@@ -8,7 +8,7 @@ class BadDesignError(Exception):
     pass
 
 
-class LOGIN:
+class Login:
     validator: Validator
     helper: Helper
     db: Database
@@ -25,12 +25,12 @@ class LOGIN:
     # For 1st Boolean Pending means bool would be True else False
     # 2nd Bool True Would mean active else would mean banned
     def check_if_email_or_user(self, suspect: str) -> str:
-        is_email, _ = self.validator.valid_email(suspect)
+        is_email, _ = self.validator.validate(field_to_check=['email'], field_values=[suspect])
         search_key = ''
         if is_email:
             search_key = 'email'
         else:
-            is_user, _ = self.validator.valid_user(suspect)
+            is_user, _ = self.validator.validate(field_to_check=['user'], field_values=[suspect])
             if not is_user:
                 raise BadDesignError(
                     'CHECK YOUR VARIABLES IN MAIN FUNCTION BEFORE PASSING THEM IN A HELPER FUNCTION YOU STUPID')
@@ -157,3 +157,20 @@ class LOGIN:
         self.delete_peaceful_ppl(username_or_email)
         self.update_login_time(username_or_email)
         return True, 'Success'
+
+
+class ForgotPass:
+    def __init__(self):
+        self.db = Database()
+        self.helper = Helper()
+        self.module = self.helper.library_initialization()
+        self.validator = Validator()
+        self.Login = Login()
+
+    def send_mail(self, username_or_email: str) -> tuple[bool, str]:
+        identification = self.Login.check_if_email_or_user(username_or_email)
+        if identification == 'email':
+            output = self.db.find(list_of_keys=['username'], table_name='registration',
+                                  list_of_values=[username_or_email])
+            if len(output) == 0:
+                return False, 'Could not find the username or email'
