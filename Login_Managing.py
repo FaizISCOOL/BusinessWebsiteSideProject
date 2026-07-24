@@ -62,7 +62,9 @@ class Login:
             return False, False
         output = found[0]
         lockout_temp = output[3]
-        cleansed_lockout_temp = datetime.strptime(lockout_temp, '%Y-%m-%d %H:%M:%S')
+        if not lockout_temp:
+            return False, False
+        cleansed_lockout_temp = datetime.fromisoformat(lockout_temp.replace(' ', 'T'))
         if cleansed_lockout_temp > datetime.now():
             return True, 'YOU ARE LOCKED OUT FOR REPEATED LOGIN ATTEMPTS'
         return False, False
@@ -95,7 +97,7 @@ class Login:
         now = datetime.now()
         attempts_expire_raw = output[0][4]
         if attempts_expire_raw:
-            attempts_expire_dt = datetime.strptime(attempts_expire_raw, '%Y-%m-%d %H:%M:%S')
+            attempts_expire_dt = datetime.fromisoformat(attempts_expire_raw.replace(' ','T'))
             if now > attempts_expire_dt:
                 attempts = 0
         new_attempt = attempts + 1
@@ -110,8 +112,8 @@ class Login:
                 attempt_expiry = expiry
                 break
         final_attempts_expire = now + timedelta(minutes=attempt_expiry)
-        lockout_format = final_lockdown_penalty.strftime('%Y-%m-%d %H:%M:%S')
-        expire_format = final_attempts_expire.strftime('%Y-%m-%d %H:%M:%S')
+        lockout_format = final_lockdown_penalty.isoformat(sep=' ')
+        expire_format = final_attempts_expire.isoformat(sep=' ')
         self.db.update(update_keys=['attempts', 'lockout', 'attempts_expire'],
                        update_values=[new_attempt, lockout_format, expire_format], where_keys=[search_key],
                        where_values=[username_or_email], table_name='temp_login_block')
@@ -133,7 +135,7 @@ class Login:
                               list_of_values=[username_or_email])
         if len(output) == 0:
             raise BadDesignError('Its as simple as writing A LINE OF CODE TO CHECK IF THE ROW EXISTS OR NOT')
-        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        now = datetime.now().isoformat(sep=' ')
         self.db.update(update_keys=['last_login'], update_values=[now], where_keys=[search_key],
                        where_values=[username_or_email], table_name='registration')
 
@@ -165,12 +167,13 @@ class ForgotPass:
         self.helper = Helper()
         self.module = self.helper.library_initialization()
         self.validator = Validator()
-        self.Login = Login()
+        self.login = Login()
 
-    def send_mail(self, username_or_email: str) -> tuple[bool, str]:
-        identification = self.Login.check_if_email_or_user(username_or_email)
-        if identification == 'email':
-            output = self.db.find(list_of_keys=['username'], table_name='registration',
-                                  list_of_values=[username_or_email])
-            if len(output) == 0:
-                return False, 'Could not find the username or email'
+    def only_email(self,username_or_email : str) -> str:
+        decider = self.login.check_if_email_or_user(username_or_email)
+        if decider == 'email':
+            return username_or_email
+        output = self.db.find(table_name='registration',list_of_keys=[decider],list_of_values=[username_or_email])
+        if len(output) == 0:
+            raise BadDesignError('CHECK Existence In the Main Function')
+        return output[0][2]

@@ -30,8 +30,7 @@ class InvalidParams(Exception):
 # Just to show it's a human writing the code, I live in my house with my parents, ok bye
 class Database:
     def __init__(self, db_file: pathlib.Path | str = 'registration_and_login_database.db') -> None:
-        self.conn = sqlite3.connect(db_file)
-        self.cursor = self.conn.cursor()
+        self.db = db_file
         self.table_name = None
         self.hp = Helper()
         self.schemas = {
@@ -43,41 +42,39 @@ class Database:
         self.unused_code_deletion()
 
     def table_initialization(self, table_name: str = 'registration') -> None:
-        clean_table_name = "".join(char for char in table_name if char.isalnum() or char == '_')
+        clean_table_name = table_name
         self.table_name = clean_table_name
-        if clean_table_name not in self.schemas and clean_table_name != 'email_verification':
-            self.schemas[clean_table_name] = self.schemas['registration']
-        self.cursor.execute(f"""CREATE TABLE IF NOT EXISTS {clean_table_name} (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        username TEXT NOT NULL UNIQUE COLLATE NOCASE,
-        email TEXT CHECK (email LIKE '%_@__%.%_'),
-        password TEXT NOT NULL,
-        country_code TEXT DEFAULT '+91' CHECK (length(country_code) <= 5),
-        contact_number TEXT NOT NULL CHECK(length(contact_number) BETWEEN 7 AND 15),
-        account_status TEXT DEFAULT 'PENDING_VERIFICATION' CHECK(account_status IN ('ACTIVE', 'SUSPENDED', 'PENDING_VERIFICATION')),
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        last_login TIMESTAMP DEFAULT CURRENT_TIMESTAMP);""")
+        with sqlite3.connect(self.db) as conn:
+            cursor = conn.cursor()
+            cursor.execute(f"""CREATE TABLE IF NOT EXISTS {clean_table_name} (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL UNIQUE COLLATE NOCASE,
+            email TEXT CHECK (email LIKE '%_@__%.%_') COLLATE NOCASE,
+            password TEXT NOT NULL,
+            country_code TEXT DEFAULT '+91' CHECK (length(country_code) <= 5),
+            contact_number TEXT NOT NULL CHECK(length(contact_number) BETWEEN 7 AND 15),
+            account_status TEXT DEFAULT 'PENDING_VERIFICATION' CHECK(account_status IN ('ACTIVE', 'SUSPENDED', 'PENDING_VERIFICATION')),
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            last_login TIMESTAMP DEFAULT CURRENT_TIMESTAMP);""")
 
-        self.cursor.execute(f"""CREATE TABLE IF NOT EXISTS email_verification (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        email TEXT CHECK (email LIKE '%_@__%.%_'),
-        code TEXT NOT NULL CHECK (length(code) >= 6),
-        timestamp DATETIME NOT NULL
-        );""")
+            cursor.execute("""CREATE TABLE IF NOT EXISTS email_verification (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    email TEXT CHECK (email LIKE '%_@__%.%_'),
+                    code TEXT NOT NULL CHECK (length(code) >= 6),
+                    timestamp DATETIME NOT NULL
+                    );""")
 
-        self.cursor.execute(f"""CREATE TABLE IF NOT EXISTS temp_login_block (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        username TEXT NOT NULL UNIQUE COLLATE NOCASE,
-        attempts INTEGER NOT NULL DEFAULT 0,
-        lockout TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        attempts_expire TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        email TEXT CHECK (email LIKE '%_@__%.%_'))""")
-
-        self.cursor.execute(f"""
-            CREATE INDEX IF NOT EXISTS idx_{clean_table_name}_username 
-            ON {clean_table_name} (username);
-            """)
-        self.conn.commit()
+            cursor.execute("""CREATE TABLE IF NOT EXISTS temp_login_block (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    username TEXT NOT NULL UNIQUE COLLATE NOCASE,
+                    attempts INTEGER NOT NULL DEFAULT 0,
+                    lockout TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    attempts_expire TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    email TEXT CHECK (email LIKE '%_@__%.%_'))""")
+            cursor.execute(f"""
+                        CREATE INDEX IF NOT EXISTS idx_{clean_table_name}_username 
+                        ON {clean_table_name} (username);
+                        """)
 
     def key_match(self, key_values: list, target_table: str) -> None:
         if target_table not in self.schemas:
@@ -86,85 +83,121 @@ class Database:
         if not output:
             raise DatasetKeyMismatch(f'The key values provided DO NOT MATCH the schema for {target_table}')
 
+    def dynamic_helper(self, list_keys: list, list_values: list, table_name: str, empty_key_check=True) -> None:
+        self.key_match(list_keys, table_name)
+        if table_name not in self.schemas:
+            raise DatasetKeyMismatch('Table NOT Mentioned')
+        if len(list_values) != len(list_keys):
+            raise DatabaseListMismatch('List Length Mismatch')
+        if empty_key_check:
+            if not list_keys:
+                raise EmptyParams('NO KEYS PROVIDED')
+
     # To ensure The keys are accurate to the ones made when initializing the table
-    def find(self, list_of_values: list = None, list_of_keys: list = None, return_all: bool = False,
+    def find(self,
+             list_of_values: list = None,
+             list_of_keys: list = None,
+             return_all: bool = False,
              table_name: str | None = None) -> list:
         if list_of_values is None: list_of_values = []
         if list_of_keys is None: list_of_keys = []
         if table_name is None:
             table_name = self.table_name
-        self.key_match(list_of_keys, table_name)
-        if len(list_of_values) != len(list_of_keys):
-            raise DatabaseListMismatch("List Length Mismatch")
-        if not list_of_keys and return_all:
-            self.cursor.execute(f"SELECT * FROM {table_name}")
-            return self.cursor.fetchall()
-        elif not list_of_keys and not return_all:
-            raise EmptyList("NO keys Provided / return_all is set to False")
+        self.dynamic_helper(list_of_keys, list_of_values, table_name, empty_key_check=False)
+        if not list_of_keys:
+            if return_all:
+                with sqlite3.connect(self.db) as conn:
+                    cursor = conn.cursor()
+                    cursor.execute(f"SELECT * FROM {table_name}")
+                    return cursor.fetchall()
+            else:
+                raise EmptyList("NO keys Provided / return_all is set to False")
         query = [f'{key} = ?' for key in list_of_keys]
         where_conditions = ' AND '.join(query)
         final_query = f'SELECT * FROM {table_name} WHERE {where_conditions}'
-        self.cursor.execute(final_query, list_of_values)
-        return self.cursor.fetchall()
+        with sqlite3.connect(self.db) as conn:
+            cursor = conn.cursor()
+            cursor.execute(final_query, list_of_values)
+            return cursor.fetchall()
 
-    def insert(self, list_of_values: list = None, list_of_keys: list = None, table_name: str | None = None) -> None:
+    def insert(self,
+               list_of_values: list = None,
+               list_of_keys: list = None,
+               table_name: str | None = None) -> None:
         if list_of_values is None: list_of_values = []
         if list_of_keys is None: list_of_keys = []
         if table_name is None:
             table_name = self.table_name
-        self.key_match(list_of_keys, table_name)
-        if len(list_of_values) != len(list_of_keys):
-            raise DatabaseListMismatch("List Length Mismatch")
-        if not list_of_keys:
-            raise EmptyList("NO keys Provided")
+        self.dynamic_helper(list_of_keys, list_of_values, table_name)
         columns = ', '.join(list_of_keys)
         placeholders = ['?' for _ in list_of_keys]
         placeholders = ', '.join(placeholders)
         final_query = f"INSERT INTO {table_name} ({columns}) VALUES ({placeholders})"
-        self.cursor.execute(final_query, list_of_values)
-        self.conn.commit()
+        with sqlite3.connect(self.db) as conn:
+            cursor = conn.cursor()
+            cursor.execute(final_query, list_of_values)
 
-    def delete(self, list_of_values: list = None, list_of_keys: list = None, table_name: str | None = None) -> None:
+    def delete(self,
+               list_of_values: list = None,
+               list_of_keys: list = None,
+               table_name: str | None = None) -> None:
         if list_of_values is None: list_of_values = []
         if list_of_keys is None: list_of_keys = []
         if table_name is None:
             table_name = self.table_name
-        self.key_match(list_of_keys, table_name)
-        if len(list_of_values) != len(list_of_keys):
-            raise DatabaseListMismatch("List Length Mismatch")
-        if not list_of_keys:
-            raise EmptyList("NO keys Provided")
+        self.dynamic_helper(list_of_keys, list_of_values, table_name)
         conditional_key = [f"{key} = ?" for key in list_of_keys]
         query = ' AND '.join(conditional_key)
         final_query = f"DELETE FROM {table_name} WHERE {query}"
-        self.cursor.execute(final_query, list_of_values)
-        self.conn.commit()
+        with sqlite3.connect(self.db) as conn:
+            cursor = conn.cursor()
+            cursor.execute(final_query, list_of_values)
 
-    def update(self, update_keys: list = None, update_values: list = None, where_keys: list = None,
-               where_values: list = None, table_name: str | None = None) -> None:
+    def update(self,
+               update_keys: list = None,
+               update_values: list = None,
+               where_keys: list = None,
+               where_values: list = None,
+               table_name: str | None = None) -> None:
         if update_keys is None: update_keys = []
         if update_values is None: update_values = []
         if where_keys is None: where_keys = []
         if where_values is None: where_values = []
         if table_name is None:
             table_name = self.table_name
-        self.key_match(update_keys, table_name)
-        self.key_match(where_keys, table_name)
-        if (len(update_keys) != len(update_values)) or (len(where_keys) != len(where_values)):
-            raise DatabaseListMismatch("List Length Mismatch")
-        if not update_keys or not where_keys:
-            raise EmptyList("NO keys Provided")
+        self.dynamic_helper(update_keys, update_values, table_name)
+        self.dynamic_helper(where_keys, where_values, table_name)
         set_update_keys = [f"{key} = ?" for key in update_keys]
         set_query = ', '.join(set_update_keys)
         where_condition_key = [f'{key2} = ?' for key2 in where_keys]
         where_query = ' AND '.join(where_condition_key)
         final_query = f"UPDATE {table_name} SET {set_query} WHERE {where_query}"
         values = update_values + where_values
-        self.cursor.execute(final_query, values)
-        self.conn.commit()
+        with sqlite3.connect(self.db) as conn:
+            cursor = conn.cursor()
+            cursor.execute(final_query, values)
+
+    def exists(self,
+               list_of_keys: list = None,
+               list_of_values: list = None,
+               table_name: str | None = None) -> tuple[
+        bool, str]:
+        if list_of_keys is None:
+            list_of_keys = []
+        if list_of_values is None:
+            list_of_values = []
+        if table_name is None:
+            table_name = self.table_name
+        self.dynamic_helper(list_of_keys, list_of_values, table_name)
+        output = self.find(list_of_values=list_of_values, list_of_keys=list_of_keys, table_name=table_name)
+        if len(output) == 0:
+            return False, "Doesn't Exist"
+        return True, "Exists"
 
     # Remember Folks, ONLY USERNAME AND EMAIL ALLOWED since they are special for each account registered
-    def extract_id_main(self, method: str | None = None, value: str | None = None,
+    def extract_id_main(self,
+                        method: str | None = None,
+                        value: str | None = None,
                         table_name: str | None = None) -> int:
         if method is None:
             raise InvalidParams("Method is None")
@@ -184,15 +217,17 @@ class Database:
             raise InvalidParams('Parameters DO NOT MATCH THE LIST IN FUNCTION (change_state)')
         if ID == 0:
             raise InvalidParams('The ID was NOT provided.')
-        self.cursor.execute(f"SELECT 1 FROM registration WHERE id = ?", (ID,))
-        if not self.cursor.fetchone():
-            raise InvalidParams('The ID provided does not exist in the table.')
+        with sqlite3.connect(self.db) as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT 1 FROM registration WHERE id = ?", (ID,))
+            if not cursor.fetchone():
+                raise InvalidParams('The ID provided does not exist in the table.')
 
         self.update(update_keys=['account_status'], update_values=[state_to_change_to], where_keys=['id'],
                     where_values=[ID], table_name='registration')
 
     def check_for_death_time(self, death_time: str) -> bool:
-        norm_time = datetime.strptime(death_time, '%Y-%m-%d %H:%M:%S')
+        norm_time = datetime.fromisoformat(death_time.replace(' ', 'T'))
         return norm_time < datetime.now()
 
     # PERSONAL EDITED FOR ONLY THE EMAIL TABLE
@@ -210,12 +245,12 @@ class Database:
             return True, 'Code IS AUTHENTICATED'
 
     def unused_code_deletion(self) -> None:
-        current_time_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        self.cursor.execute(
-            "DELETE FROM email_verification WHERE timestamp < ?",
-            (current_time_str,)
-        )
-        self.conn.commit()
+        current_time_str = datetime.now().isoformat(sep=' ')
+        with sqlite3.connect(self.db) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "DELETE FROM email_verification WHERE datetime(timestamp) < ?",
+                (current_time_str,))
 
 
 class Register:
@@ -287,6 +322,9 @@ class Register:
         subject: str = self.email_subject
         new_code, timestamp = self.helper.generate_verification_code()
         message: str = self.small_little_message_creator(new_code)
+        state,_ = self.db.exists(list_of_keys=['email'], list_of_values=[email], table_name='email_verification')
+        if not state:
+            self.db.insert(list_of_keys=['email', 'code', 'timestamp'],list_of_values=[email, new_code, timestamp], table_name='email_verification')
         self.db.update(where_keys=['email'], where_values=[email], table_name='email_verification',
                        update_keys=['code', 'timestamp'], update_values=[new_code, timestamp])
         hello = self.helper.email_send(sender_email=sender_email, sender_password=app_pass, recipient_email=email,
@@ -328,4 +366,9 @@ class Register:
 
     def tiredday5(self):
         pass
+
     # zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz
+
+    def tiredday6(self):
+        pass
+    # zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz

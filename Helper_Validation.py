@@ -67,7 +67,7 @@ class Helper:
     @staticmethod
     def generate_verification_code() -> tuple[str, str]:
         code: str = str(100000 + secrets.randbelow(900000))
-        expiry_time: str = (datetime.now() + timedelta(minutes=5)).strftime('%Y-%m-%d %H:%M:%S')
+        expiry_time: str = (datetime.now() + timedelta(minutes=5)).isoformat(sep=' ')
         return code, expiry_time
 
 
@@ -75,6 +75,7 @@ class Helper:
         passwordhasher = self.module['argon2'].PasswordHasher
         ph = passwordhasher()
         return ph.hash(password)
+
 
     # REMEMBER WHENEVER YOU SEND ANY sender_password here, PLEASE MAKE SURE it's NOT your actual password
     # You need to get a special password, Known as the APP password from GOOGLE
